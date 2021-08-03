@@ -1,7 +1,11 @@
 import sys
 from functools import wraps
+import time
+import logging
 
 from aredis.exceptions import (ClusterDownError, RedisClusterException)
+
+logger = logging.getLogger(__name__)
 
 _C_EXTENSION_SPEEDUP = False
 try:
@@ -13,6 +17,14 @@ except Exception:
 
 LOOP_DEPRECATED = sys.version_info >= (3, 8)
 
+def timing(f):
+    @wraps(f)
+    def wrap(*args, **kw):
+        start = time.perf_counter()
+        result = f(*args, **kw)
+        logger.info(f"{f.__name__} took {time.perf_counter() - start} s")
+        return result
+    return wrap
 
 def b(x):
     return x.encode('latin-1') if not isinstance(x, bytes) else x

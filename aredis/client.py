@@ -23,7 +23,7 @@ from aredis.connection import RedisSSLContext, UnixDomainSocketConnection
 from aredis.exceptions import (AskError, BusyLoadingError, ClusterDownError, ClusterError, ConnectionError, MovedError,
                                RedisClusterException, TimeoutError, TryAgainError)
 from aredis.pool import (ClusterConnectionPool, ConnectionPool)
-from aredis.utils import (NodeFlag, blocked_command, clusterdown_wrapper, dict_merge, first_key)
+from aredis.utils import (NodeFlag, blocked_command, clusterdown_wrapper, dict_merge, first_key, timing)
 
 mixins = [
     ClusterCommandMixin, ConnectionCommandMixin, ExtraCommandMixin,
@@ -146,6 +146,7 @@ class StrictRedis(*mixins):
         self.response_callbacks[command] = callback
 
     # COMMAND EXECUTION AND PROTOCOL PARSING
+    @timing
     async def execute_command(self, *args, **options):
         """Executes a command and returns a parsed response"""
         pool = self.connection_pool
@@ -167,6 +168,7 @@ class StrictRedis(*mixins):
         finally:
             pool.release(connection)
 
+    @timing
     async def parse_response(self, connection, command_name, **options):
         """Parses a response from the Redis server"""
         response = await connection.read_response()
@@ -175,6 +177,7 @@ class StrictRedis(*mixins):
             return callback(response, **options)
         return response
 
+    @timing
     async def pipeline(self, transaction=True, shard_hint=None):
         """
         Returns a new pipeline object that can queue multiple commands for
@@ -203,6 +206,7 @@ class StrictRedisCluster(StrictRedis, *cluster_mixins):
                                     for mixin in cluster_mixins
                                     if hasattr(mixin, 'RESULT_CALLBACKS')])
 
+    @timing
     def __init__(self, host=None, port=None, startup_nodes=None, max_connections=32,
                  max_connections_per_node=False, readonly=False,
                  reinitialize_steps=None, skip_full_coverage_check=False,
@@ -261,6 +265,7 @@ class StrictRedisCluster(StrictRedis, *cluster_mixins):
         self.result_callbacks = self.__class__.RESULT_CALLBACKS.copy()
         self.response_callbacks = self.__class__.RESPONSE_CALLBACKS.copy()
 
+    @timing
     @classmethod
     def from_url(cls, url, db=None, skip_full_coverage_check=False, **kwargs):
         """
@@ -296,6 +301,7 @@ class StrictRedisCluster(StrictRedis, *cluster_mixins):
         "Sets a custom Result Callback"
         self.result_callbacks[command] = callback
 
+    @timing
     def _determine_slot(self, *args):
         """Figures out what slot based on command and args"""
         if len(args) <= 1:
@@ -322,6 +328,7 @@ class StrictRedisCluster(StrictRedis, *cluster_mixins):
 
         return self.connection_pool.nodes.keyslot(key)
 
+    @timing
     def _merge_result(self, command, res, **kwargs):
         """
         `res` is a dict with the following structure Dict(NodeName, CommandResult)
@@ -332,6 +339,7 @@ class StrictRedisCluster(StrictRedis, *cluster_mixins):
         # Default way to handle result
         return first_key(res)
 
+    @timing
     def determine_node(self, *args, **kwargs):
         """
         TODO: document
@@ -358,6 +366,7 @@ class StrictRedisCluster(StrictRedis, *cluster_mixins):
         else:
             return None
 
+    @timing
     @clusterdown_wrapper
     async def execute_command(self, *args, **kwargs):
         """
@@ -444,6 +453,7 @@ class StrictRedisCluster(StrictRedis, *cluster_mixins):
 
         raise ClusterError('TTL exhausted.')
 
+    @timing
     async def execute_command_on_nodes(self, nodes, *args, **kwargs):
         command = args[0]
         res = {}
@@ -471,6 +481,7 @@ class StrictRedisCluster(StrictRedis, *cluster_mixins):
                 self.connection_pool.release(connection)
         return self._merge_result(command, res, **kwargs)
 
+    @timing
     async def pipeline(self, transaction=None, shard_hint=None, watches=None):
         """
         Cluster impl:

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import random
-from aredis.utils import (b, hash_slot)
+from aredis.utils import (b, hash_slot, timing)
 from aredis.exceptions import (ConnectionError,
                                RedisClusterException)
 
@@ -12,6 +12,7 @@ class NodeManager:
     """
     RedisClusterHashSlots = 16384
 
+    @timing
     def __init__(self, startup_nodes=None, reinitialize_steps=None,
                  skip_full_coverage_check=False,
                  nodemanager_follow_cluster=False, **connection_kwargs):
@@ -37,6 +38,7 @@ class NodeManager:
         if not self.startup_nodes:
             raise RedisClusterException("No startup nodes provided")
 
+    @timing
     def encode(self, value):
         """Returns a bytestring representation of the value"""
         if isinstance(value, bytes):
@@ -51,36 +53,44 @@ class NodeManager:
             value = value.encode()
         return value
 
+    @timing
     def keyslot(self, key):
         """Calculates keyslot for a given key"""
         key = self.encode(key)
         return hash_slot(key)
 
+    @timing
     def node_from_slot(self, slot):
         for node in self.slots[slot]:
             if node['server_type'] == 'master':
                 return node
 
+    @timing
     def all_nodes(self):
         for node in self.nodes.values():
             yield node
 
+    @timing
     def all_masters(self):
         for node in self.nodes.values():
             if node["server_type"] == "master":
                 yield node
 
+    @timing
     def random_startup_node(self):
         return random.choice(self.startup_nodes)
 
+    @timing
     def random_startup_node_iter(self):
         """A generator that returns a random startup nodes"""
         while True:
             yield random.choice(self.startup_nodes)
 
+    @timing
     def random_node(self):
         return random.choice(list(self.nodes.values()))
 
+    @timing
     def get_redis_link(self, host, port):
         from aredis.client import StrictRedis
         allowed_keys = (
@@ -96,6 +106,7 @@ class NodeManager:
         connection_kwargs = {k: v for k, v in self.connection_kwargs.items() if k in allowed_keys}
         return StrictRedis(host=host, port=port, decode_responses=True, **connection_kwargs)
 
+    @timing
     async def initialize(self):
         """
         Initializes the slots cache by asking all startup nodes what the
@@ -197,12 +208,14 @@ class NodeManager:
         self.nodes = nodes_cache
         self.reinitialize_counter = 0
 
+    @timing
     async def increment_reinitialize_counter(self, ct=1):
         for i in range(1, ct):
             self.reinitialize_counter += 1
             if self.reinitialize_counter % self.reinitialize_steps == 0:
                 await self.initialize()
 
+    @timing
     async def cluster_require_full_coverage(self, nodes_cache):
         """
         If exists 'cluster-require-full-coverage no' config on redis servers,
@@ -222,6 +235,7 @@ class NodeManager:
                 return True
         return False
 
+    @timing
     def set_node_name(self, n):
         """
         Formats the name for the given node object
@@ -231,6 +245,7 @@ class NodeManager:
         if 'name' not in n:
             n['name'] = '{0}:{1}'.format(n['host'], n['port'])
 
+    @timing
     def set_node(self, host, port, server_type=None):
         """Updates data for a node"""
         node_name = "{0}:{1}".format(host, port)
@@ -243,6 +258,7 @@ class NodeManager:
         self.nodes[node_name] = node
         return node
 
+    @timing
     def populate_startup_nodes(self):
         """
         Do something with all startup nodes and filters out any duplicates
@@ -259,6 +275,7 @@ class NodeManager:
         # then thaw it back out into a list of dicts
         self.startup_nodes = [dict(node) for node in uniq]
 
+    @timing
     async def reset(self):
         """Drops all node data and start over from startup_nodes"""
         await self.initialize()

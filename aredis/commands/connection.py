@@ -1,6 +1,7 @@
 from aredis.utils import (NodeFlag,
                           bool_ok,
-                          nativestr)
+                          nativestr,
+                          timing)
 
 
 class ConnectionCommandMixin:
@@ -11,10 +12,12 @@ class ConnectionCommandMixin:
         'SELECT': bool_ok,
     }
 
+    @timing
     async def echo(self, value):
         "Echo the string back from the server"
         return await self.execute_command('ECHO', value)
 
+    @timing
     async def ping(self):
         "Ping the Redis server"
         return await self.execute_command('PING')

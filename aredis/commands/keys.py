@@ -10,9 +10,11 @@ from aredis.utils import (merge_result,
                           int_or_none,
                           bool_ok,
                           string_keys_to_dict,
-                          list_keys_to_dict)
+                          list_keys_to_dict,
+                          timing)
 
 
+@timing
 def sort_return_tuples(response, **options):
     """
     If ``groups`` is specified, return the response as a list of
@@ -24,6 +26,7 @@ def sort_return_tuples(response, **options):
     return list(zip(*[response[i::n] for i in range(n)]))
 
 
+@timing
 def parse_object(response, infotype):
     """Parse the results of an OBJECT command"""
     if infotype in ('idletime', 'refcount'):
@@ -31,6 +34,7 @@ def parse_object(response, infotype):
     return response
 
 
+@timing
 def parse_scan(response, **options):
     cursor, r = response
     return int(cursor), r
@@ -53,10 +57,12 @@ class KeysCommandMixin:
         }
     )
 
+    @timing
     async def delete(self, *names):
         """Delete one or more keys specified by ``names``"""
         return await self.execute_command('DEL', *names)
 
+    @timing
     async def dump(self, name):
         """
         Return a serialized version of the value stored at the specified key.
@@ -64,10 +70,12 @@ class KeysCommandMixin:
         """
         return await self.execute_command('DUMP', name)
 
+    @timing
     async def exists(self, name):
         """Returns a boolean indicating whether key ``name`` exists"""
         return await self.execute_command('EXISTS', name)
 
+    @timing
     async def expire(self, name, time):
         """
         Set an expire flag on key ``name`` for ``time`` seconds. ``time``
@@ -77,6 +85,7 @@ class KeysCommandMixin:
             time = time.seconds + time.days * 24 * 3600
         return await self.execute_command('EXPIRE', name, time)
 
+    @timing
     async def expireat(self, name, when):
         """
         Set an expire flag on key ``name``. ``when`` can be represented
@@ -86,22 +95,27 @@ class KeysCommandMixin:
             when = int(mod_time.mktime(when.timetuple()))
         return await self.execute_command('EXPIREAT', name, when)
 
+    @timing
     async def keys(self, pattern='*'):
         """Returns a list of keys matching ``pattern``"""
         return await self.execute_command('KEYS', pattern)
 
+    @timing
     async def move(self, name, db):
         """Moves the key ``name`` to a different Redis database ``db``"""
         return await self.execute_command('MOVE', name, db)
 
+    @timing
     async def object(self, infotype, key):
         """Returns the encoding, idletime, or refcount about the key"""
         return await self.execute_command('OBJECT', infotype, key, infotype=infotype)
 
+    @timing
     async def persist(self, name):
         """Removes an expiration on ``name``"""
         return await self.execute_command('PERSIST', name)
 
+    @timing
     async def pexpire(self, name, time):
         """
         Set an expire flag on key ``name`` for ``time`` milliseconds.
@@ -113,6 +127,7 @@ class KeysCommandMixin:
             time = (time.seconds + time.days * 24 * 3600) * 1000 + ms
         return await self.execute_command('PEXPIRE', name, time)
 
+    @timing
     async def pexpireat(self, name, when):
         """
         Set an expire flag on key ``name``. ``when`` can be represented
@@ -124,26 +139,31 @@ class KeysCommandMixin:
             when = int(mod_time.mktime(when.timetuple())) * 1000 + ms
         return await self.execute_command('PEXPIREAT', name, when)
 
+    @timing
     async def pttl(self, name):
         """
         Returns the number of milliseconds until the key ``name`` will expire
         """
         return await self.execute_command('PTTL', name)
 
+    @timing
     async def randomkey(self):
         """Returns the name of a random key"""
         return await self.execute_command('RANDOMKEY')
 
+    @timing
     async def rename(self, src, dst):
         """
         Renames key ``src`` to ``dst``
         """
         return await self.execute_command('RENAME', src, dst)
 
+    @timing
     async def renamenx(self, src, dst):
         """Renames key ``src`` to ``dst`` if ``dst`` doesn't already exist"""
         return await self.execute_command('RENAMENX', src, dst)
 
+    @timing
     async def restore(self, name, ttl, value, replace=False):
         """
         Creates a key using the provided serialized value, previously obtained
@@ -154,6 +174,7 @@ class KeysCommandMixin:
             params.append('REPLACE')
         return await self.execute_command('RESTORE', *params)
 
+    @timing
     async def sort(self, name, start=None, num=None, by=None, get=None,
              desc=False, alpha=False, store=None, groups=False):
         """
@@ -221,6 +242,7 @@ class KeysCommandMixin:
         options = {'groups': len(get) if groups else None}
         return await self.execute_command('SORT', *pieces, **options)
 
+    @timing
     async def touch(self, keys):
         """
         Alters the last access time of a key(s).
@@ -228,18 +250,22 @@ class KeysCommandMixin:
         """
         return await self.execute_command('TOUCH', *keys)
 
+    @timing
     async def ttl(self, name):
         """Returns the number of seconds until the key ``name`` will expire"""
         return await self.execute_command('TTL', name)
 
+    @timing
     async def type(self, name):
         """Returns the type of key ``name``"""
         return await self.execute_command('TYPE', name)
 
+    @timing
     async def unlink(self, *keys):
         """Removes the specified keys in a different thread, not blocking"""
         return await self.execute_command('UNLINK', *keys)
 
+    @timing
     async def wait(self, num_replicas, timeout):
         """
         Redis synchronous replication
@@ -249,6 +275,7 @@ class KeysCommandMixin:
         """
         return await self.execute_command('WAIT', num_replicas, timeout)
 
+    @timing
     async def scan(self, cursor=0, match=None, count=None):
         """
         Incrementally return lists of key names. Also return a cursor
@@ -286,6 +313,7 @@ class ClusterKeysCommandMixin(KeysCommandMixin):
         'SCAN': lambda res: res
     }
 
+    @timing
     async def rename(self, src, dst):
         """
         Rename key ``src`` to ``dst``
@@ -313,6 +341,7 @@ class ClusterKeysCommandMixin(KeysCommandMixin):
 
         return True
 
+    @timing
     async def delete(self, *names):
         """
         "Delete one or more keys specified by ``names``"
@@ -330,6 +359,7 @@ class ClusterKeysCommandMixin(KeysCommandMixin):
 
         return count
 
+    @timing
     async def renamenx(self, src, dst):
         """
         Rename key ``src`` to ``dst`` if ``dst`` doesn't already exist

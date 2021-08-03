@@ -18,6 +18,7 @@ from aredis.connection import (RedisSSLContext,
 from aredis.nodemanager import NodeManager
 from aredis.exceptions import (ConnectionError,
                                RedisClusterException)
+from aredis.utils import timing
 
 FALSE_STRINGS = ('0', 'F', 'FALSE', 'N', 'NO')
 
@@ -40,6 +41,7 @@ URL_QUERY_ARGUMENT_PARSERS = {
 class ConnectionPool:
     """Generic connection pool"""
 
+    @timing
     @classmethod
     def from_url(cls, url, db=None, decode_components=False, **kwargs):
         """
@@ -148,6 +150,7 @@ class ConnectionPool:
         kwargs.update(url_options)
         return cls(**kwargs)
 
+    @timing
     def __init__(self, connection_class=Connection, max_connections=None,
                  max_idle_time=0, idle_check_interval=1,
                  **connection_kwargs):
@@ -180,6 +183,7 @@ class ConnectionPool:
             self.connection_class.description.format(**self.connection_kwargs),
         )
 
+    @timing
     async def disconnect_on_idle_time_exceeded(self, connection):
         while True:
             if (time.time() - connection.last_active_at > self.max_idle_time
@@ -193,6 +197,7 @@ class ConnectionPool:
                 break
             await asyncio.sleep(self.idle_check_interval)
 
+    @timing
     def reset(self):
         self.pid = os.getpid()
         self._created_connections = 0
@@ -200,6 +205,7 @@ class ConnectionPool:
         self._in_use_connections = set()
         self._check_lock = threading.Lock()
 
+    @timing
     def _checkpid(self):
         if self.pid != os.getpid():
             with self._check_lock:
@@ -210,6 +216,7 @@ class ConnectionPool:
                 self.disconnect()
                 self.reset()
 
+    @timing
     def get_connection(self, *args, **kwargs):
         """Gets a connection from the pool"""
         self._checkpid()
@@ -220,6 +227,7 @@ class ConnectionPool:
         self._in_use_connections.add(connection)
         return connection
 
+    @timing
     def make_connection(self):
         """Creates a new connection"""
         if self._created_connections >= self.max_connections:
@@ -231,6 +239,7 @@ class ConnectionPool:
             asyncio.ensure_future(self.disconnect_on_idle_time_exceeded(connection))
         return connection
 
+    @timing
     def release(self, connection):
         """Releases the connection back to the pool"""
         self._checkpid()
@@ -244,6 +253,7 @@ class ConnectionPool:
         else:
             self._available_connections.append(connection)
 
+    @timing
     def disconnect(self):
         """Closes all connections in the pool"""
         all_conns = chain(self._available_connections,
@@ -257,6 +267,7 @@ class ClusterConnectionPool(ConnectionPool):
     """Custom connection pool for rediscluster"""
     RedisClusterDefaultTimeout = None
 
+    @timing
     def __init__(self, startup_nodes=None, connection_class=ClusterConnection,
                  max_connections=None, max_connections_per_node=False, reinitialize_steps=None,
                  skip_full_coverage_check=False, nodemanager_follow_cluster=False, readonly=False,
@@ -317,11 +328,13 @@ class ClusterConnectionPool(ConnectionPool):
                        for node in self.nodes.startup_nodes])
         )
 
+    @timing
     async def initialize(self):
         if not self.initialized:
             await self.nodes.initialize()
             self.initialized = True
 
+    @timing
     async def disconnect_on_idle_time_exceeded(self, connection):
         while True:
             if (time.time() - connection.last_active_at > self.max_idle_time
@@ -333,6 +346,7 @@ class ClusterConnectionPool(ConnectionPool):
                 break
             await asyncio.sleep(self.idle_check_interval)
 
+    @timing
     def reset(self):
         """Resets the connection pool back to a clean state"""
         self.pid = os.getpid()
@@ -342,6 +356,7 @@ class ClusterConnectionPool(ConnectionPool):
         self._check_lock = threading.Lock()
         self.initialized = False
 
+    @timing
     def _checkpid(self):
         if self.pid != os.getpid():
             with self._check_lock:
@@ -352,6 +367,7 @@ class ClusterConnectionPool(ConnectionPool):
                 self.disconnect()
                 self.reset()
 
+    @timing
     def get_connection(self, command_name, *keys, **options):
         # Only pubsub command/connection should be allowed here
         if command_name != "pubsub":
@@ -379,6 +395,7 @@ class ClusterConnectionPool(ConnectionPool):
 
         return connection
 
+    @timing
     def make_connection(self, node):
         """Creates a new connection"""
         if self.count_all_num_connections(node) >= self.max_connections:
@@ -402,6 +419,7 @@ class ClusterConnectionPool(ConnectionPool):
             asyncio.ensure_future(self.disconnect_on_idle_time_exceeded(connection))
         return connection
 
+    @timing
     def release(self, connection):
         """Releases the connection back to the pool"""
         self._checkpid()
@@ -425,6 +443,7 @@ class ClusterConnectionPool(ConnectionPool):
         else:
             self._available_connections.setdefault(connection.node["name"], []).append(connection)
 
+    @timing
     def disconnect(self):
         """Closes all connectins in the pool"""
         all_conns = chain(
@@ -436,12 +455,14 @@ class ClusterConnectionPool(ConnectionPool):
             for connection in node_connections:
                 connection.disconnect()
 
+    @timing
     def count_all_num_connections(self, node):
         if self.max_connections_per_node:
             return self._created_connections_per_node.get(node['name'], 0)
 
         return sum([i for i in self._created_connections_per_node.values()])
 
+    @timing
     def get_random_connection(self):
         """Opens new connection to random redis server"""
         if self._available_connections:
@@ -458,12 +479,14 @@ class ClusterConnectionPool(ConnectionPool):
 
         raise Exception("Cant reach a single startup node.")
 
+    @timing
     def get_connection_by_key(self, key):
         if not key:
             raise RedisClusterException("No way to dispatch this command to Redis Cluster.")
 
         return self.get_connection_by_slot(self.nodes.keyslot(key))
 
+    @timing
     def get_connection_by_slot(self, slot):
         """
         Determines what server a specific slot belongs to and return a redis
@@ -476,6 +499,7 @@ class ClusterConnectionPool(ConnectionPool):
         except KeyError:
             return self.get_random_connection()
 
+    @timing
     def get_connection_by_node(self, node):
         """Gets a connection by node"""
         self._checkpid()
@@ -491,9 +515,11 @@ class ClusterConnectionPool(ConnectionPool):
 
         return connection
 
+    @timing
     def get_master_node_by_slot(self, slot):
         return self.nodes.slots[slot][0]
 
+    @timing
     def get_node_by_slot(self, slot):
         if self.readonly:
             return random.choice(self.nodes.slots[slot])

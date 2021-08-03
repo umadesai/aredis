@@ -2,16 +2,19 @@ from aredis.utils import (bool_ok,
                           nativestr,
                           NodeFlag,
                           list_keys_to_dict,
-                          dict_merge)
+                          dict_merge, 
+                          timing)
 from aredis.exceptions import (RedisError,
                                ClusterError)
 
 
+@timing
 def parse_cluster_info(response, **options):
     response = nativestr(response)
     return dict([line.split(':') for line in response.splitlines() if line])
 
 
+@timing
 def parse_cluster_nodes(resp, **options):
     """
     @see: http://redis.io/commands/cluster-nodes  # string
@@ -81,6 +84,7 @@ def parse_cluster_nodes(resp, **options):
     return nodes
 
 
+@timing
 def parse_cluster_slots(response):
     res = dict()
     for slot_info in response:
@@ -139,6 +143,7 @@ class ClusterCommandMixin:
         )
     )
 
+    @timing
     def _nodes_slots_to_slots_nodes(self, mapping):
         """
         Converts a mapping of
@@ -154,6 +159,7 @@ class ClusterCommandMixin:
                 out[str(slot)] = node['id']
         return out
 
+    @timing
     async def cluster_addslots(self, node_id, *slots):
         """
         Assign new hash slots to receiving node
@@ -162,6 +168,7 @@ class ClusterCommandMixin:
         """
         return await self.execute_command('CLUSTER ADDSLOTS', *slots, node_id=node_id)
 
+    @timing
     async def cluster_count_failure_report(self, node_id=''):
         """
         Return the number of failure reports active for a given node
@@ -170,6 +177,7 @@ class ClusterCommandMixin:
         """
         return await self.execute_command('CLUSTER COUNT-FAILURE-REPORTS', node_id=node_id)
 
+    @timing
     async def cluster_countkeysinslot(self, slot_id):
         """
         Return the number of local keys in the specified hash slot
@@ -178,6 +186,7 @@ class ClusterCommandMixin:
         """
         return await self.execute_command('CLUSTER COUNTKEYSINSLOT', slot_id)
 
+    @timing
     async def cluster_delslots(self, *slots):
         """
         Set hash slots as unbound in the cluster.
@@ -191,6 +200,7 @@ class ClusterCommandMixin:
             res.append(await self.execute_command('CLUSTER DELSLOTS', slot, node_id=cluster_nodes[slot]))
         return res
 
+    @timing
     async def cluster_failover(self, node_id, option):
         """
         Forces a slave to perform a manual failover of its master
@@ -201,6 +211,7 @@ class ClusterCommandMixin:
             raise ClusterError('Wrong option provided')
         return await self.execute_command('CLUSTER FAILOVER', option, node_id=node_id)
 
+    @timing
     async def cluster_forget(self, node_id):
         """
         remove a node via its node ID from the set of known nodes
@@ -210,6 +221,7 @@ class ClusterCommandMixin:
         """
         return await self.execute_command('CLUSTER FORGET', node_id)
 
+    @timing
     async def cluster_info(self):
         """
         Provides info about Redis Cluster node state
@@ -218,6 +230,7 @@ class ClusterCommandMixin:
         """
         return await self.execute_command('CLUSTER INFO')
 
+    @timing
     async def cluster_keyslot(self, name):
         """
         Returns the hash slot of the specified key
@@ -226,6 +239,7 @@ class ClusterCommandMixin:
         """
         return await self.execute_command('CLUSTER KEYSLOT', name)
 
+    @timing
     async def cluster_meet(self, node_id, host, port):
         """
         Force a node cluster to handshake with another node.
@@ -234,6 +248,7 @@ class ClusterCommandMixin:
         """
         return await self.execute_command('CLUSTER MEET', host, port, node_id=node_id)
 
+    @timing
     async def cluster_nodes(self):
         """
         Force a node cluster to handshake with another node
@@ -242,6 +257,7 @@ class ClusterCommandMixin:
         """
         return await self.execute_command('CLUSTER NODES')
 
+    @timing
     async def cluster_replicate(self, target_node_id):
         """
         Reconfigure a node as a slave of the specified master node
@@ -250,6 +266,7 @@ class ClusterCommandMixin:
         """
         return await self.execute_command('CLUSTER REPLICATE', target_node_id)
 
+    @timing
     async def cluster_reset(self, node_id, soft=True):
         """
         Reset a Redis Cluster node
@@ -262,6 +279,7 @@ class ClusterCommandMixin:
         option = 'SOFT' if soft else 'HARD'
         return await self.execute_command('CLUSTER RESET', option, node_id=node_id)
 
+    @timing
     async def cluster_reset_all_nodes(self, soft=True):
         """
         Send CLUSTER RESET to all nodes in the cluster
@@ -280,6 +298,7 @@ class ClusterCommandMixin:
                 ))
         return res
 
+    @timing
     async def cluster_save_config(self):
         """
         Forces the node to save cluster state on disk
@@ -288,6 +307,7 @@ class ClusterCommandMixin:
         """
         return await self.execute_command('CLUSTER SAVECONFIG')
 
+    @timing
     async def cluster_set_config_epoch(self, node_id, epoch):
         """
         Set the configuration epoch in a new node
@@ -297,6 +317,7 @@ class ClusterCommandMixin:
         return await self.execute_command('CLUSTER SET-CONFIG-EPOCH', epoch, node_id=node_id)
 
 
+    @timing
     async def cluster_setslot(self, node_id, slot_id, state):
         """
         Bind an hash slot to a specific node
@@ -310,6 +331,7 @@ class ClusterCommandMixin:
         else:
             raise RedisError('Invalid slot state: {0}'.format(state))
 
+    @timing
     async def cluster_get_keys_in_slot(self, slot_id, count):
         """
         Return local key names in the specified hash slot
@@ -317,6 +339,7 @@ class ClusterCommandMixin:
         """
         return await self.execute_command('CLUSTER GETKEYSINSLOT', slot_id, count)
 
+    @timing
     async def cluster_slaves(self, target_node_id):
         """
         Force a node cluster to handshake with another node
@@ -325,6 +348,7 @@ class ClusterCommandMixin:
         """
         return await self.execute_command('CLUSTER SLAVES', target_node_id)
 
+    @timing
     async def cluster_slots(self):
         """
         Get array of Cluster slot to node mappings

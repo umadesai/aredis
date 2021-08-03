@@ -17,7 +17,7 @@ from aredis.exceptions import (ConnectionError, TimeoutError,
                                InvalidResponse, AskError,
                                MovedError, TryAgainError,
                                ClusterDownError, ClusterCrossSlotError)
-from aredis.utils import b, nativestr, LOOP_DEPRECATED
+from aredis.utils import b, nativestr, LOOP_DEPRECATED, timing
 
 try:
     import hiredis
@@ -57,6 +57,7 @@ class SocketBuffer:
     def length(self):
         return self.bytes_written - self.bytes_read
 
+    @timing
     async def _read_from_socket(self, length=None):
         buf = self._buffer
         buf.seek(self.bytes_written)
@@ -81,6 +82,7 @@ class SocketBuffer:
             raise ConnectionError("Error while reading from socket: %s" %
                                   (e.args,))
 
+    @timing
     async def read(self, length):
         length = length + 2  # make sure to read the \r\n terminator
         # make sure we've read enough data from the socket
@@ -98,6 +100,7 @@ class SocketBuffer:
 
         return data[:-2]
 
+    @timing
     async def readline(self):
         buf = self._buffer
         buf.seek(self.bytes_read)
@@ -117,12 +120,14 @@ class SocketBuffer:
 
         return data[:-2]
 
+    @timing
     def purge(self):
         self._buffer.seek(0)
         self._buffer.truncate()
         self.bytes_written = 0
         self.bytes_read = 0
 
+    @timing
     def close(self):
         try:
             self.purge()
@@ -156,6 +161,7 @@ class BaseParser:
         'CROSSSLOT': ClusterCrossSlotError,
     }
 
+    @timing
     def parse_error(self, response):
         """Parse an error response"""
         error_code = response.split(' ')[0]
@@ -181,6 +187,7 @@ class PythonParser(BaseParser):
         except Exception:
             pass
 
+    @timing
     def on_connect(self, connection):
         """Called when the stream connects"""
         self._stream = connection._reader
@@ -188,6 +195,7 @@ class PythonParser(BaseParser):
         if connection.decode_responses:
             self.encoding = connection.encoding
 
+    @timing
     def on_disconnect(self):
         """Called when the stream disconnects"""
         if self._stream is not None:
@@ -200,6 +208,7 @@ class PythonParser(BaseParser):
     def can_read(self):
         return self._buffer and bool(self._buffer.length)
 
+    @timing
     async def read_response(self):
         if not self._buffer:
             raise ConnectionError('Socket closed on remote end')
@@ -254,6 +263,7 @@ class PythonParser(BaseParser):
 class HiredisParser(BaseParser):
     """Parser class for connections using Hiredis"""
 
+    @timing
     def __init__(self, read_size):
         if not HIREDIS_AVAILABLE:
             raise RedisError("Hiredis is not installed")
@@ -267,6 +277,7 @@ class HiredisParser(BaseParser):
         except Exception:
             pass
 
+    @timing
     def can_read(self):
         if not self._reader:
             raise ConnectionError("Socket closed on remote end")
@@ -275,6 +286,7 @@ class HiredisParser(BaseParser):
             self._next_response = self._reader.gets()
         return self._next_response is not False
 
+    @timing
     def on_connect(self, connection):
         self._stream = connection._reader
         kwargs = {
@@ -286,12 +298,14 @@ class HiredisParser(BaseParser):
         self._reader = hiredis.Reader(**kwargs)
         self._next_response = False
 
+    @timing
     def on_disconnect(self):
         if self._stream is not None:
             self._stream = None
         self._reader = None
         self._next_response = False
 
+    @timing
     async def read_response(self):
         if not self._stream:
             raise ConnectionError("Socket closed on remote end")
@@ -329,6 +343,8 @@ else:
 
 
 class RedisSSLContext:
+
+    @timing
     def __init__(self, keyfile=None, certfile=None,
                  cert_reqs=None, ca_certs=None):
         self.keyfile = keyfile
@@ -349,6 +365,7 @@ class RedisSSLContext:
         self.ca_certs = ca_certs
         self.context = None
 
+    @timing
     def get(self):
         if not self.keyfile:
             self.context = ssl.create_default_context(cafile=self.ca_certs)
@@ -364,6 +381,7 @@ class RedisSSLContext:
 class BaseConnection:
     description = 'BaseConnection'
 
+    @timing
     def __init__(self, retry_on_timeout=False, stream_timeout=None,
                  parser_class=DefaultParser, reader_read_size=65535,
                  encoding='utf-8', decode_responses=False,
@@ -394,22 +412,27 @@ class BaseConnection:
         except Exception:
             pass
 
+    @timing
     @property
     def is_connected(self):
         return bool(self._reader and self._writer)
 
+    @timing
     def register_connect_callback(self, callback):
         self._connect_callbacks.append(callback)
 
+    @timing
     def clear_connect_callbacks(self):
         self._connect_callbacks = list()
 
+    @timing
     async def can_read(self):
         """Checks for data that can be read"""
         if not self.is_connected:
             await self.connect()
         return self._parser.can_read()
 
+    @timing
     async def connect(self):
         try:
             await self._connect()
@@ -427,9 +450,11 @@ class BaseConnection:
             if inspect.isawaitable(task):
                 await task
 
+    @timing
     async def _connect(self):
         raise NotImplementedError
 
+    @timing
     async def on_connect(self):
         self._parser.on_connect(self)
 
@@ -446,6 +471,7 @@ class BaseConnection:
                 raise ConnectionError('Invalid Database')
         self.last_active_at = time.time()
 
+    @timing
     async def read_response(self):
         try:
             response = await exec_with_timeout(self._parser.read_response(), self._stream_timeout, loop=self.loop)
@@ -458,6 +484,7 @@ class BaseConnection:
         self.awaiting_response = False
         return response
 
+    @timing
     async def send_packed_command(self, command):
         """Sends an already packed command to the Redis server"""
         if not self._writer:
@@ -483,6 +510,7 @@ class BaseConnection:
             self.disconnect()
             raise
 
+    @timing
     async def send_command(self, *args):
         if not self.is_connected:
             await self.connect()
@@ -490,6 +518,7 @@ class BaseConnection:
         self.awaiting_response = True
         self.last_active_at = time.time()
 
+    @timing
     def encode(self, value):
         """Returns a bytestring representation of the value"""
         if isinstance(value, bytes):
@@ -504,6 +533,7 @@ class BaseConnection:
             value = value.encode(self.encoding)
         return value
 
+    @timing
     def disconnect(self):
         """Disconnects from the Redis server"""
         self._parser.on_disconnect()
@@ -514,6 +544,7 @@ class BaseConnection:
         self._reader = None
         self._writer = None
 
+    @timing
     def pack_command(self, *args):
         "Pack a series of arguments into the Redis protocol"
         output = []
@@ -545,6 +576,7 @@ class BaseConnection:
         output.append(buff)
         return output
 
+    @timing
     def pack_commands(self, commands):
         "Pack multiple commands into the Redis protocol"
         output = []
@@ -569,6 +601,7 @@ class BaseConnection:
 class Connection(BaseConnection):
     description = 'Connection<host={host},port={port},db={db}>'
 
+    @timing
     def __init__(self, host='127.0.0.1', port=6379, password=None,
                  db=0, retry_on_timeout=False, stream_timeout=None, connect_timeout=None,
                  ssl_context=None, parser_class=DefaultParser, reader_read_size=65535,
@@ -592,6 +625,7 @@ class Connection(BaseConnection):
         self.socket_keepalive = socket_keepalive
         self.socket_keepalive_options = socket_keepalive_options or {}
 
+    @timing
     async def _connect(self):
         reader, writer = await exec_with_timeout(
             asyncio.open_connection(host=self.host,
@@ -623,6 +657,7 @@ class Connection(BaseConnection):
 class UnixDomainSocketConnection(BaseConnection):
     description = "UnixDomainSocketConnection<path={path},db={db}>"
 
+    @timing
     def __init__(self, path='', password=None,
                  db=0, retry_on_timeout=False, stream_timeout=None, connect_timeout=None,
                  ssl_context=None, parser_class=DefaultParser, reader_read_size=65535,
@@ -641,6 +676,7 @@ class UnixDomainSocketConnection(BaseConnection):
             'db': self.db
         }
 
+    @timing
     async def _connect(self):
         reader, writer = await exec_with_timeout(
             asyncio.open_unix_connection(path=self.path,
@@ -658,10 +694,12 @@ class ClusterConnection(Connection):
     "Manages TCP communication to and from a Redis server"
     description = "ClusterConnection<host={host},port={port}>"
 
+    @timing
     def __init__(self, *args, **kwargs):
         self.readonly = kwargs.pop('readonly', False)
         super(ClusterConnection, self).__init__(*args, **kwargs)
 
+    @timing
     async def on_connect(self):
         """
         Initialize the connection, authenticate and select a database and send READONLY if it is
